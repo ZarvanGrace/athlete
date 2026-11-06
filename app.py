@@ -6,7 +6,7 @@ from pathlib import Path
 import jdatetime
 from PySide6.QtCore import Qt, QTimer, Signal, QMarginsF, QUrl, QRectF, QPointF, QSizeF
 from PySide6.QtGui import (QFont, QPainter, QPen, QColor, QImage, QTextDocument,
-                           QPdfWriter, QPageSize, QPageLayout)
+                           QPdfWriter, QPageSize, QPageLayout, QPalette)
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPlainTextEdit, QComboBox, QPushButton, QListWidget,
@@ -109,30 +109,25 @@ METRICS = [(f[0], f[1].replace(" (خودکار)", "").replace("خودکار، ",
 # ───────────────────────── ابزارهای کمکی ─────────────────────────
 _TR = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٫،", "01234567890123456789.,")
 def norm(s): return (s or "").translate(_TR).strip()
-
 def num(s):
     try: return float(norm(str(s)).replace("/", ".").replace(",", "."))
     except ValueError: return None
-
 def parse_date(s):
     parts = norm(s).replace("-", "/").split("/")
     if len(parts) != 3: return None
     try: return jdatetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
     except (ValueError, TypeError): return None
-
 def fmt_date(d): return f"{d.year:04d}/{d.month:02d}/{d.day:02d}"
 def today_str(): return fmt_date(jdatetime.date.today())
 def canon(s):
     d = parse_date(s)
     return fmt_date(d) if d else norm(s)
-
 def calc_age(birth):
     b = parse_date(birth)
     if not b: return ""
     t = jdatetime.date.today()
     a = t.year - b.year - ((t.month, t.day) < (b.month, b.day))
     return str(a) if a >= 0 else ""
-
 def fmt(v):
     return "—" if v is None else f"{round(v, 2):g}"
 
@@ -157,7 +152,6 @@ class DB:
         CREATE TABLE IF NOT EXISTS assessments(id INTEGER PRIMARY KEY, student_id INTEGER, date TEXT, data TEXT);
         """)
         self.c.commit()
-
     def students(self):
         return self.c.execute("SELECT id,name FROM students ORDER BY name COLLATE NOCASE").fetchall()
     def get_student(self, sid):
@@ -243,7 +237,6 @@ class FormPanel(QWidget):
             g.addWidget(lab, r, c * 2); g.addWidget(w, r, c * 2 + 1)
             g.setColumnStretch(c * 2 + 1, 1)
         g.setRowStretch(g.rowCount(), 1)
-
     def get(self):
         d = {}
         for k, (w, kind) in self.w.items():
@@ -255,11 +248,8 @@ class FormPanel(QWidget):
             else: v = w.text().strip()
             d[k] = v
         return d
-
     def value(self, key): return self.get()[key]
-
     def set_auto(self, key, text): self.w[key][0].setText(text or "—")
-
     def set(self, d, prev=None):
         for k, (w, kind) in self.w.items():
             v = d.get(k, "") or ""
@@ -332,7 +322,7 @@ def change(vals):
     if len(v) < 2: return "—"
     return "\u200e" + f"{round(v[-1] - v[0], 2):+g}" + "\u200e"
 
-def tr(cells): return "<tr>" + "".join(reversed(cells)) + "</tr>"  # Qt ستون‌ها را برای RTL برعکس نمی‌کند
+def tr(cells): return "<tr>" + "".join(reversed(cells)) + "</tr>"   # Qt ستون‌ها را برای RTL برعکس نمی‌کند
 def th(t): return f'<th bgcolor="#1a5fb4"><font color="white">{html.escape(t)}</font></th>'
 TBL = '<table border="1" cellspacing="0" cellpadding="5" width="100%">'
 
@@ -406,8 +396,8 @@ def export_pdf(path, student, ass, full):
     w = QPdfWriter(path)
     w.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
     w.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout.Unit.Millimeter)
-    w.setResolution(96)  # واحد سند = پیکسل 96dpi؛ خروجی PDF برداری است و کیفیتش پایین نمی‌آید
-    doc.setPageSize(QSizeF(w.width(), w.height()))  # بدون این، جدول‌ها فقط ~۷۸٪ عرض صفحه را پر می‌کنند
+    w.setResolution(96)   # واحد سند = پیکسل 96dpi؛ خروجی PDF برداری است و کیفیتش پایین نمی‌آید
+    doc.setPageSize(QSizeF(w.width(), w.height()))   # بدون این، جدول‌ها فقط ~۷۸٪ عرض صفحه را پر می‌کنند
     doc.print_(w)
 
 # ───────────────────────── پنجره اصلی ─────────────────────────
@@ -444,25 +434,23 @@ class Main(QMainWindow):
         # نوار دکمه‌ها
         bar = QHBoxLayout()
         b_save = QPushButton("💾 ذخیره"); b_save.clicked.connect(lambda: self.save_all(True))
-        b_pdf = QPushButton("📄 خروجی PDF  ▾"); m = QMenu(b_pdf)
+        b_pdf = QPushButton("📄 خروجی PDF ▾"); m = QMenu(b_pdf)
         m.addAction("گزارش کامل (پرونده + پیشرفت)", lambda: self.pdf(True))
         m.addAction("فقط مقایسه پیشرفت", lambda: self.pdf(False)); b_pdf.setMenu(m)
         b_bak = QPushButton("📦 پشتیبان‌گیری"); b_bak.clicked.connect(self.backup)
         b_res = QPushButton("♻️ بازیابی"); b_res.clicked.connect(self.restore)
         for b in (b_save, b_pdf, b_bak, b_res): bar.addWidget(b)
         bar.addStretch()
-
         right = QWidget(); rl = QVBoxLayout(right); rl.addLayout(bar); rl.addWidget(self.tabs)
         sp = QSplitter(); sp.addWidget(side); sp.addWidget(right); sp.setStretchFactor(1, 1)
         sp.setSizes([260, 950]); self.setCentralWidget(sp)
-        self.statusBar().showMessage(f"محل ذخیره اطلاعات: {data_dir()}   |   نسخه‌های خودکار: {BACKUP_DIR}")
+        self.statusBar().showMessage(f"محل ذخیره اطلاعات: {data_dir()} | نسخه‌های خودکار: {BACKUP_DIR}")
 
         for p in (self.p_personal, self.p_med, self.p_health, self.p_goals,
                   self.f_date, self.f_anth, self.f_comp, self.f_post, self.f_notes):
             p.changed.connect(self.mark)
         self.p_personal.changed.connect(lambda: self.p_personal.set_auto("age", calc_age(self.p_personal.value("birth"))))
         self.f_anth.changed.connect(self.calc_assess); self.f_comp.changed.connect(self.calc_assess)
-
         self.timer = QTimer(self); self.timer.timeout.connect(lambda: self.save_all()); self.timer.start(15000)
         self.refresh_students(None)
         if self.lst.count(): self.lst.setCurrentRow(0)
@@ -587,7 +575,7 @@ class Main(QMainWindow):
     def refresh_assess(self, select, load=False):
         self.alist.blockSignals(True); self.alist.clear(); row = -1
         for a in self.db.assessments(self.sid):
-            w = a["data"].get("weight"); it = QListWidgetItem(a["date"] + (f"   —   {w} کیلو" if w else ""))
+            w = a["data"].get("weight"); it = QListWidgetItem(a["date"] + (f" — {w} کیلو" if w else ""))
             it.setData(Qt.ItemDataRole.UserRole, a["id"]); self.alist.addItem(it)
             if a["id"] == select: row = self.alist.count() - 1
         if row >= 0: self.alist.setCurrentRow(row)
@@ -688,12 +676,28 @@ STYLE = """
 * { font-family: Tahoma, 'Segoe UI'; font-size: 10pt; }
 QPushButton { background:#1a5fb4; color:white; border:none; padding:8px 14px; border-radius:6px; }
 QPushButton:hover { background:#2a73d0; }
-QLineEdit, QComboBox, QPlainTextEdit { padding:5px; border:1px solid #bbb; border-radius:4px; background:white; }
+QLineEdit, QComboBox, QPlainTextEdit { padding:5px; border:1px solid #bbb; border-radius:4px; background:white; color:#222; }
+QComboBox QAbstractItemView { background:white; color:#222; selection-background-color:#1a5fb4; selection-color:white; }
+QListWidget, QTableWidget { background:white; color:#222; }
 QGroupBox { font-weight:bold; border:1px solid #ccc; border-radius:6px; margin-top:10px; padding-top:10px; }
 QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top right; padding: 0 10px; }
 QListWidget::item { padding:7px; } QListWidget::item:selected { background:#1a5fb4; color:white; }
 QTabBar::tab { padding:9px 14px; }
 """
+
+def light_palette():
+    """پالت روشن ثابت؛ مستقل از حالت تیره ویندوز، تا متن و کادرها همیشه خوانا باشند."""
+    pal = QPalette()
+    for role, col in [
+        (QPalette.ColorRole.Window, "#f3f3f3"), (QPalette.ColorRole.WindowText, "#222222"),
+        (QPalette.ColorRole.Base, "#ffffff"), (QPalette.ColorRole.AlternateBase, "#f0f0f0"),
+        (QPalette.ColorRole.Text, "#222222"), (QPalette.ColorRole.Button, "#e8e8e8"),
+        (QPalette.ColorRole.ButtonText, "#222222"), (QPalette.ColorRole.Highlight, "#1a5fb4"),
+        (QPalette.ColorRole.HighlightedText, "#ffffff"), (QPalette.ColorRole.PlaceholderText, "#888888"),
+        (QPalette.ColorRole.ToolTipBase, "#ffffff"), (QPalette.ColorRole.ToolTipText, "#222222"),
+    ]:
+        pal.setColor(role, QColor(col))
+    return pal
 
 def main():
     def hook(t, v, tb):
@@ -704,6 +708,8 @@ def main():
         info(None, "یک خطای غیرمنتظره رخ داد. اطلاعات ذخیره‌شده سالم است.\n\n" + str(v), QMessageBox.Icon.Critical)
     sys.excepthook = hook
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    app.setPalette(light_palette())
     app.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
     app.setStyleSheet(STYLE)
     db = DB(data_dir() / "athletes.db")
